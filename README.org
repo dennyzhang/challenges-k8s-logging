@@ -9,6 +9,11 @@
 
 <a href="http://makeapullrequest.com" target="_blank" rel="nofollow"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"/></a>
 #+END_HTML
+** Questions
+*** When fluentd scan pod log files, it's not fast enough.
+
+It will scan every 60 seconds. But my pods may be recreated within 10 seconds.
+*** If each k8s worker node only has one log agent, would logging aggregation run into performance issue?
 ** More Resources
  License: Code is licensed under [[https://www.dennyzhang.com/wp-content/mit_license.txt][MIT License]].
 
