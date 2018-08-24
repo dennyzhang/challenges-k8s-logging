@@ -24,7 +24,6 @@ It will scan every 60 seconds. But my pods may be recreated within 10 seconds.
  #+END_HTML
 * org-mode configuration                                           :noexport:
 #+STARTUP: overview customtime noalign logdone showall
-#+TITLE:  Kubernets logging
 #+DESCRIPTION: 
 #+KEYWORDS: 
 #+AUTHOR: Denny Zhang
@@ -37,3 +36,12 @@ It will scan every 60 seconds. But my pods may be recreated within 10 seconds.
 #+SEQ_TODO: TODO HALF ASSIGN | DONE BYPASS DELEGATE CANCELED DEFERRED
 #+LINK_UP:   
 #+LINK_HOME: 
+* DONE mac syslog rfc5424                                          :noexport:
+  CLOSED: [2018-07-19 Thu 16:30]
+https://gist.github.com/darconeous/1b3aee893536c1de2401
+https://stackoverflow.com/questions/380172/reading-syslog-output-on-a-mac
+
+https://docs.fluentd.org/v1.0/articles/in_syslog
+https://stackify.com/syslog-101/
+
+<16>1 2017-02-28T12:00:00.009Z 192.168.0.1 fluentd - - - Hello!
