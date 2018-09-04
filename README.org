@@ -2,7 +2,6 @@
 :PROPERTIES:
 :type:     logging
 :END:
-Blog URL: https://kubernetes.dennyzhang.com/challenges-k8s-logging, Category: [[https://kubernetes.dennyzhang.com/category/concept][concept]]
 
 #+BEGIN_HTML
 <a href="https://github.com/dennyzhang/challenges-k8s-logging"><img align="right" width="200" height="183" src="https://www.dennyzhang.com/wp-content/uploads/denny/watermark/github.png" /></a>
@@ -16,6 +15,9 @@ Blog URL: https://kubernetes.dennyzhang.com/challenges-k8s-logging, Category: [[
 <br/><br/>
 <a href="http://makeapullrequest.com" target="_blank" rel="nofollow"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"/></a>
 #+END_HTML
+
+Blog URL: https://kubernetes.dennyzhang.com/challenges-k8s-logging, Category: [[https://kubernetes.dennyzhang.com/category/concept][concept]]
+
 ** Questions
 *** When fluentd scan pod log files, it's not fast enough.
 
