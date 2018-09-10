@@ -19,18 +19,15 @@
 Blog URL: https://kubernetes.dennyzhang.com/challenges-k8s-logging, Category: [[https://kubernetes.dennyzhang.com/category/concept][concept]]
 
 ** Questions
+*** fluentd monitor only if folder exists
 *** When fluentd scan pod log files, it's not fast enough.
-
 It will scan every 60 seconds. But my pods may be recreated within 10 seconds.
+*** Multiple log agents for different personas?
+*** kube pods: k8s related pods and pods from k8s add
 *** If each k8s worker node only has one log agent, would logging aggregation run into performance issue?
-** More Resources
- License: Code is licensed under [[https://www.dennyzhang.com/wp-content/mit_license.txt][MIT License]].
-
- #+BEGIN_HTML
- <a href="https://www.dennyzhang.com"><img align="right" width="201" height="268" src="https://raw.githubusercontent.com/USDevOps/mywechat-slack-group/master/images/denny_201706.png"></a>
-
- <a href="https://www.dennyzhang.com"><img align="right" src="https://raw.githubusercontent.com/USDevOps/mywechat-slack-group/master/images/dns_small.png"></a>
- #+END_HTML
+*** Can't turn off feature level logging
+*** CRD: k8s controller issue unavailable issue
+- sink deletion when controller is down?
 * org-mode configuration                                           :noexport:
 #+STARTUP: overview customtime noalign logdone showall
 #+DESCRIPTION: 
@@ -54,3 +51,315 @@ https://docs.fluentd.org/v1.0/articles/in_syslog
 https://stackify.com/syslog-101/
 
 <16>1 2017-02-28T12:00:00.009Z 192.168.0.1 fluentd - - - Hello!
+* TODO openshift logging: https://docs.openshift.com/container-platform/3.11/install_config/aggregate_logging.html :noexport:
+* 日志系统 -- Logging                                    :noexport:IMPORTANT:
+我们通常使用的日志库（如log4j等），将日志基本分为以下几类（从低到高）：
+
+| Level | Summary                                                                                                                  |
+|-------+--------------------------------------------------------------------------------------------------------------------------|
+| TRACE | The TRACE Level designates finer-grained informational events than the DEBUG                                             |
+| DEBUG | The DEBUG Level designates fine-grained informational events that are most useful to debug an application.               |
+| INFO  | The INFO level designates informational messages that highlight the progress of the application at coarse-grained level. |
+| WARN  | The WARN level designates potentially harmful situations.                                                                |
+| ERROR | The ERROR level designates error events that might still allow the application to continue running.                      |
+| FATAL | The FATAL level designates very severe error events that will presumably lead the application to abort.                  |
+
+#+begin_example
+  典型的日志系统需具备三个基本组件,分别为agent(封装数据源,将数据源中的数据发送给
+  collector),collector(接收多个 agent的数据,并进行汇总后导入后端的store中),store(中
+  央存储系统,应该具有可扩展性和可靠性,应该支持当前非常流行的HDFS)。
+
+  传统的日志分析系统提供了一种离线处理日志信息的可扩展方案,但若要进行实时处理,通常会有较
+  大延迟。而现有的消(队列)系统能够很好的处理实时或者近似实时的应用,但未处理的数据通常不
+  会写到磁盘上
+#+end_example
+** [#A] Scribe - facebook开源的日志收集系统
+#+begin_example
+   Scribe是对一个使用非阻断C++服务器的thrift服务的实现.
+
+   它最重要的特点是容错性好。当后端的存储系统crash时,scribe会将数据写到本地磁盘上,当存储系统恢复正常后,scribe将日志重新加载到存储系统中。
+
+   scribe支持非常多的store,包括file(文件),buffer(双层存储,一个主储存,一个副存储),network(另一个scribe服务器),bucket(包含多个 store,通过hash的将数据存到不同store中),null(忽略数据),thriftfile(写到一个Thrift TFileTransport文件中)和multi(把数据同时存放到不同store中)。
+
+   Attempts to store messages and returns true if successful.
+   On failure, returns false and messages contains any un-processed messages
+#+end_example
+*** [概念] category: 是对预期目标信息的高层次描述
+Scribe的独特之处是客户端日志实例包含两个字符串:类别和信息(a category and a message).
+类别(category)是对预期目标信息的高层次描述,可以在Scribe服务器中进行配置,这样就允许我们可以通过更改配置文件的方式转移数据而不需要更改代码.
+*** 代码解析
+    store.cpp来存储消息
+# --8<-------------------------- §separator§ ------------------------>8--
+struct LogEntry
+{
+  1:  string category,
+  2:  string message
+}
+# --8<-------------------------- §separator§ ------------------------>8--
+*** TODO scribe_server.h: class scribeHandler : virtual public scribe::thrift::scribeIf, 这里scribeIf是什么接口
+*** [概念] buckets
+**** complicated configuration file                                :noexport:
+##  Copyright (c) 2007-2008 Facebook
+##
+##  Licensed under the Apache License, Version 2.0 (the "License");
+##  you may not use this file except in compliance with the License.
+##  You may obtain a copy of the License at
+##
+##      http://www.apache.org/licenses/LICENSE-2.0
+##
+##  Unless required by applicable law or agreed to in writing, software
+##  distributed under the License is distributed on an "AS IS" BASIS,
+##  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+##  See the License for the specific language governing permissions and
+##  limitations under the License.
+##
+## See accompanying file LICENSE or visit the Scribe site at:
+## http://developers.facebook.com/scribe/
+
+##
+## Sample Scribe configuration
+##
+
+# This file configures Scribe to listen for messages on port 1463 and write
+# them to /tmp/scribetest
+#
+# This configuration also tells Scribe to discard messages with a category
+# that begins with 'ignore'.
+#
+# If the message category is 'bucket_me', Scribe will hash this message to
+# 1 of 5 buckets.
+
+port=1463
+max_msg_per_second=2000000
+check_interval=3
+
+# IGNORE* - discards messages for categories that begin with 'ignore'
+<store>
+category=ignore*
+type=null
+</store>
+
+# BUCKET_ME - write 'bucket_me' messages to 1 of 5 subdirectories
+<store>
+category=bucket_me
+type=buffer
+
+target_write_size=20480
+max_write_interval=1
+buffer_send_rate=2
+retry_interval=30
+retry_interval_range=10
+
+<primary>
+type=bucket
+num_buckets=5
+bucket_subdir=bucket
+bucket_type=key_hash
+delimiter=58
+# This will hash based on the part of the message before the first ':' (char(58))
+
+<bucket>
+type=file
+fs_type=std
+file_path=/tmp/scribetest
+base_filename=bucket_me
+max_size=10000
+</bucket>
+</primary>
+
+<secondary>
+type=file
+fs_type=std
+file_path=/tmp
+base_filename=bucket_me
+max_size=30000
+</secondary>
+</store>
+
+# DEFAULT - write all other categories to /tmp/scribetest
+<store>
+category=default
+type=buffer
+
+target_write_size=20480
+max_write_interval=1
+buffer_send_rate=2
+retry_interval=30
+retry_interval_range=10
+
+<primary>
+type=file
+fs_type=std
+file_path=/tmp/scribetest
+base_filename=thisisoverwritten
+max_size=1000000
+</primary>
+
+<secondary>
+type=file
+fs_type=std
+file_path=/tmp
+base_filename=thisisoverwritten
+max_size=3000000
+</secondary>
+</store>
+*** DONE [#A] scribe在系统恢复时, 如何重新加载到存储系统          :Important:
+    CLOSED: [2011-09-29 Thu 16:33]
+/tmp/scribe/scribe/src/store_queue.cpp: void StoreQueue::threadMember()
+#+begin_src c++
+    // handle messages if stopping, enough time has passed, or queue is large
+    //
+    if (stop ||
+        (this_loop - last_handle_messages >= maxWriteInterval) ||
+        msgQueueSize >= targetWriteSize) {
+
+      if (failedMessages) {
+        // process any messages we were not able to process last time
+        messages = failedMessages;
+        failedMessages = boost::shared_ptr<logentry_vector_t>();
+      } else if (msgQueueSize > 0) {
+        // process message in queue
+        messages = msgQueue;
+        msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);
+        msgQueueSize = 0;
+      }
+
+      // reset timer
+      last_handle_messages = this_loop;
+    }
+
+    pthread_mutex_unlock(&msgMutex);
+
+    if (messages) {
+      if (!store->handleMessages(messages)) {
+        // Store could not handle these messages
+        processFailedMessages(messages);
+      }
+      store->flush();
+    }
+
+    if (!stop) {
+      // set timeout to when we need to handle messages or do a periodic check
+      abs_timeout.tv_sec = min(last_periodic_check + checkPeriod,
+          last_handle_messages + maxWriteInterval);
+      abs_timeout.tv_nsec = 0;
+
+      // wait until there's some work to do or we timeout
+      pthread_mutex_lock(&hasWorkMutex);
+      if (!hasWork) {
+	pthread_cond_timedwait(&hasWorkCond, &hasWorkMutex, &abs_timeout);
+      }
+      hasWork = false;
+      pthread_mutex_unlock(&hasWorkMutex);
+    }
+#+end_src
+*** DONE 如果写log失败, store.cpp会去掉已经写好的消息, 同时返回失败。 由此, 用户重试即可
+    CLOSED: [2011-09-29 Thu 15:32]
+*** scribe的架构比较简单,主要包括三部分,分别为scribe agent, scribe和存储系统
+#+begin_example
+(1) scribe agent
+
+scribe agent实际上是一个thrift client。 向scribe发送数据的唯一方法是使用thrift client,
+scribe内部定义了一个thrift接口,用户使用该接口将数据发送给server。
+
+(2) scribe
+
+scribe接收到thrift client发送过来的数据,根据配置文件,将不同topic的数据发送给不同的对象。
+scribe提供了各种各样的store,如 file, HDFS等,scribe可将数据加载到这些store中。
+
+(3) 存储系统
+
+存储系统实际上就是scribe中的store,当前scribe支持非常多的store,包括file(文件),
+buffer(双层存储,一个主储存,一个副存储),network(另一个scribe服务器),bucket(包含多个
+store,通过hash的将数据存到不同store中),null(忽略数据),thriftfile(写到一个Thrift
+TFileTransport文件中)和multi(把数据同时存放到不同store中)。
+#+end_example
+*** useful link
+    http://hi.baidu.com/feifeilee/blog/item/26452ffaab9f24384e4aea00.html\\
+    Installing Facebook Scribe on Fedora 8【转】_大笨鸟的天空_百度空间
+    http://blog.csdn.net/amuseme_lu/article/details/6328013\\
+    Facebook Scribe介绍 - lemo的专栏 - 博客频道 - CSDN.NET
+    https://github.com/facebook/scribe/
+    Scribe - GitHub
+** Chukwa - Apache的日志系统
+*** Chukwa中主要有3种角色,分别为：adaptor,agent,collector。
+    http://dongxicheng.org/search-engine/log-systems/\\
+
+(1) Adaptor 数据源
+
+可封装其他数据源,如file,unix命令行工具等
+
+目前可用的数据源有：hadoop logs,应用程序度量数据,系统参数数据(如linux cpu使用流率)。
+
+(2) HDFS 存储系统
+
+Chukwa采用了HDFS作为存储系统。HDFS的设计初衷是支持大文件存储和小并发高速写的应用场景,而日志系统的特点恰好相反,它需支持高并发低速率的写和大量小文件的存储。需要注意的是,直接写到HDFS上的小文件是不可见的,直到关闭文件,另外,HDFS不支持文件重新打开。
+
+(3) Collector和Agent
+
+为了克服(2)中的问题,增加了agent和collector阶段。
+
+Agent的作用：给adaptor提供各种服务,包括：启动和关闭adaptor,将数据通过HTTP传递给Collector;定期记录adaptor状态,以便crash后恢复。
+
+Collector的作用：对多个数据源发过来的数据进行合并,然后加载到HDFS中;隐藏HDFS实现的细节,如,HDFS版本更换后,只需修改collector即可。
+
+(4) Demux和achieving
+
+直接支持利用MapReduce处理数据。它内置了两个mapreduce作业,分别用于获取data和将data转化为结构化的log。存储到data store(可以是数据库或者HDFS等)中。
+** LinkedIn的Kafka
+#+begin_example
+Kafka是2010年12月份开源的项目,采用scala语言编写,使用了多种效率优化机制,整体架构比较新颖(push/pull),更适合异构集群。
+
+Kafka实际上是一个消息发布订阅系统。 producer向某个topic发布消息,而consumer订阅某个topic的消息,进而一旦有新的关于某个topic的消息,broker会传递给订阅它的所有consumer。
+
+使用了zookeeper进行负载均衡。
+
+在Kafka上,有两个原因可能导致低效：1)太多的网络请求 2)过多的字节拷贝。
+#+end_example
+*** 设计目标
+(1)数据在磁盘上存取代价为O(1)。一般数据在磁盘上是使用BTree存储的,存取代价为O(lgn)。
+
+(2)高吞吐率。即使在普通的节点上每秒钟也能处理成百上千的message。
+
+(3)显式分布式,即所有的producer、broker和consumer都会有多个,均为分布式的。
+
+(4)支持数据并行加载到Hadoop中。
+*** Kafka中主要有三种角色,分别为producer,broker和consumer。
+#+begin_example
+    http://dongxicheng.org/search-engine/log-systems/\\
+
+(1) Producer
+
+Producer的任务是向broker发送数据。Kafka提供了两种producer接口,一种是low_level接口,使用该接口会向特定的broker的某个topic下的某个partition发送数据;另一种那个是high level接口,该接口支持同步/异步发送数据,基于zookeeper的broker自动识别和负载均衡(基于Partitioner)。
+
+其中,基于zookeeper的broker自动识别值得一说。producer可以通过zookeeper获取可用的broker列表,也可以在zookeeper中注册listener,该listener在以下情况下会被唤醒：
+
+a．添加一个broker
+
+b．删除一个broker
+
+c．注册新的topic
+
+d．broker注册已存在的topic
+
+当producer得知以上时间时,可根据需要采取一定的行动。
+
+(2) Broker
+
+Broker采取了多种策略提高数据处理效率,包括sendfile和zero copy等技术。
+
+(3) Consumer
+
+consumer的作用是将日志信息加载到中央存储系统上。kafka提供了两种consumer接口,一种是low level的,它维护到某一个broker的连接,并且这个连接是无状态的,即,每次从broker上pull数据时,都要告诉broker数据的偏移量。另一种是high-level 接口,它隐藏了broker的细节,允许consumer从broker上push数据而不必关心网络拓扑结构。更重要的是,对于大部分日志系统而言,consumer已经获取的数据信息都由broker保存,而在kafka中,由consumer自己维护所取数据信息。
+#+end_example
+*** useful link
+    http://dongxicheng.org/search-engine/kafka/\\
+    消息系统Kafka介绍 | 董的博客
+** Cloudera的Flume
+#+begin_example
+   http://dongxicheng.org/search-engine/log-systems/\\
+
+Flume是cloudera于2009年7月开源的日志系统。它内置的各种组件非常齐全,用户几乎不必进行任何额外开发即可使用。
+
+Flume提供了三种级别的可靠性保障,从强到弱依次分别为：end-to-end(收到数据agent首先将event写到磁盘上,当数据传送成功后,再删除;如果数据发送失败,可以重新发送。),Store on failure(这也是scribe采用的策略,当数据接收方crash时,将数据写到本地,待恢复后,继续发送),Best effort(数据发送到接收方后,不会进行确认)。
+#+end_example
